@@ -17,7 +17,7 @@ from selenium.webdriver import Chrome, ChromeOptions
 from selenium.webdriver.common.by import By
 
 hacktivity_url = 'https://hackerone.com/hacktivity/overview?queryString=disclosed%3Atrue&sortField=disclosed_at&sortDirection=DESC&pageIndex=0'
-page_loading_timeout = 10
+page_loading_timeout = 5
 
 def create_argument_parser():
     argparser = argparse.ArgumentParser()
@@ -25,7 +25,7 @@ def create_argument_parser():
         '--browser-binary',
         type=str,
         help='Path to browser binary (Chrome or Chromium)',
-        default='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome')
+        default="C:/Program Files/Google/Chrome/Application/chrome.exe")
     argparser.add_argument(
         '--input-data-file',
         type=str,
@@ -43,35 +43,31 @@ def create_argument_parser():
 def extract_reports(raw_reports):
     reports = []
     for raw_report in raw_reports:
-        html = raw_report.get_attribute('href')
-        try:
-            index = html.index('/reports/')
-        except ValueError:
+        href = raw_report.get_attribute("href")
+        if not href or "/reports/" not in href:
             continue
-        link = 'hackerone.com'
-        for i in range(index, len(html)):
-            if html[i] == '"':
-                break
-            else:
-                link += html[i]
         report = {
             'program': '',
             'title': '',
-            'link': link,
+            'reporter': '',
+            'link': href,
             'upvotes': 0,
             'bounty': 0.,
-            'vuln_type': ''
+            'vuln_type': '',
+            'substate': '',
+            'severity': '',
+            'asset_type': '',
+            'submitted_at': '',
+            'disclosed_at': ''
         }
         reports.append(report)
-
     return reports
-
 
 def fetch(commandline_args):
     options = ChromeOptions()
     options.binary_location = commandline_args.browser_binary
-    options.add_argument('no-sandbox')
-    options.add_argument('headless')
+    options.add_argument('--no-sandbox')
+    options.add_argument('--headless=new')
     driver = Chrome(options=options)
 
     reports = []
@@ -79,46 +75,66 @@ def fetch(commandline_args):
         reader = csv.DictReader(file)
         for row in reader:
             reports.append(dict(row))
-    first_report_link = reports[0]['link']
-
+    first_report_link = reports[0]["link"] if reports else None
 
     try:
         driver.get(hacktivity_url)
         time.sleep(page_loading_timeout)
 
         page = 0
-        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        next_page_button = driver.find_element(By.CSS_SELECTOR, 'button[data-testid=\'hacktivity-pagination--pagination-next-page\']')
         new_reports = []
+        found = False
+
         while True:
-            raw_reports = driver.find_elements(By.CLASS_NAME, 'routerlink')
-            new_reports += extract_reports(raw_reports)
+            raw_reports = driver.find_elements(
+                By.XPATH, "//a[contains(@href, '/reports/') and .//div[@data-testid='report-title']]"
+            )
+            page_reports = extract_reports(raw_reports)
+            new_reports += page_reports
+
             found = False
-            for i in range(len(new_reports)):
-                if new_reports[i]['link'] == first_report_link:
-                    reports = new_reports[:i] + reports
-                    found = True
-                    break
+            if first_report_link:
+                for i, report in enumerate(new_reports):
+                    if report["link"] == first_report_link:
+                        reports = new_reports[:i] + reports
+                        found = True
+                        break
+            else:
+                reports = new_reports
+
             if found:
+                print("Found first known report, stopping.")
                 break
 
             page += 1
-            print('Page:', page)
-            driver.execute_script("arguments[0].click();", next_page_button)
-            time.sleep(page_loading_timeout)
-            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-    except Exception as e:
-        print(e)
-        now = datetime.now().strftime('%Y-%m-%d')
-        driver.get_screenshot_as_file('error-%s.png' % now)
-    finally:
-        driver.close()
+            print("Page:", page)
 
-    with open(commandline_args.output_data_file, 'w', newline='', encoding='utf-8') as file:
-        keys = reports[0].keys()
-        writer = csv.DictWriter(file, fieldnames=keys)
-        writer.writeheader()
-        writer.writerows(reports)
+            try:
+                next_page_button = driver.find_element(
+                    By.XPATH, "//button[@data-testid='hacktivity-pagination--pagination-next-page']"
+                )
+                driver.execute_script("arguments[0].click();", next_page_button)
+                time.sleep(page_loading_timeout)
+                driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            except Exception:
+                print("No more pages.")
+                break
+
+    except Exception as e:
+        print("Error:", e)
+        now = datetime.now().strftime('%Y-%m-%d')
+        driver.get_screenshot_as_file(f'error-{now}.png')
+    finally:
+        driver.quit()
+
+    if reports:
+        with open(commandline_args.output_data_file, 'w', newline='', encoding='utf-8') as file:
+            keys = reports[0].keys()
+            writer = csv.DictWriter(file, fieldnames=keys)
+            writer.writeheader()
+            writer.writerows(reports)
+    
+    print(f"Saved {len(reports)} reports to {commandline_args.output_data_file}")
 
 
 if __name__ == '__main__':
