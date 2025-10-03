@@ -49,14 +49,21 @@ def fill(commandline_args):
     for i in range(count_of_reports):
         time.sleep(0.5)
         print('Fetching report ' + str(i + 1) + ' out of ' + str(count_of_reports))
-        report_url = 'https://' + new_reports[i]['link'] + '.json'
+        report_url = new_reports[i]['link'] + '.json'
+        print('url: ' + report_url)
         try:
             json_info = requests.get(report_url).json()
-            new_reports[i]['title'] = json_info['title']
             new_reports[i]['program'] = json_info['team']['profile']['name']
+            new_reports[i]['title'] = json_info['title']
+            new_reports[i]['reporter'] = json_info['reporter']['username'] if 'reporter' in json_info else ''
             new_reports[i]['upvotes'] = int(json_info['vote_count'])
-            new_reports[i]['bounty'] = float(json_info['bounty_amount'] if 'bounty_amount' in json_info else "0") if json_info['has_bounty?'] else 0.0
+            new_reports[i]['bounty'] = float(json_info['bounty_amount']) if json_info['has_bounty?'] and 'bounty_amount' in json_info else ('hidden' if json_info['has_bounty?'] else 0.0)
             new_reports[i]['vuln_type'] = json_info['weakness']['name'] if 'weakness' in json_info else ''
+            new_reports[i]['substate'] = json_info['substate']
+            new_reports[i]['severity'] = json_info['severity_rating'] if 'severity_rating' in json_info else ''
+            new_reports[i]['asset_type'] = json_info['structured_scope']['asset_type'] if 'structured_scope' in json_info and json_info['structured_scope'] != None else ''
+            new_reports[i]['submitted_at'] = json_info['submitted_at']
+            new_reports[i]['disclosed_at'] = json_info['disclosed_at']
         except Exception as err:
             print('error at report ' + str(i + 1), err)
             continue
