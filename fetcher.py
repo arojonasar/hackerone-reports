@@ -68,6 +68,7 @@ def fetch(commandline_args):
     options.binary_location = commandline_args.browser_binary
     options.add_argument('--no-sandbox')
     options.add_argument('--headless=new')
+    options.add_argument("--js-flags=--max-old-space-size=4096")
     driver = Chrome(options=options)
 
     reports = []
@@ -76,48 +77,45 @@ def fetch(commandline_args):
         for row in reader:
             reports.append(dict(row))
     first_report_link = reports[0]["link"] if reports else None
+    print("First known report link:", first_report_link)
 
     try:
         driver.get(hacktivity_url)
         time.sleep(page_loading_timeout)
 
         page = 0
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+
         new_reports = []
-        found = False
 
         while True:
-            raw_reports = driver.find_elements(
-                By.XPATH, "//a[contains(@href, '/reports/') and .//div[@data-testid='report-title']]"
-            )
+            raw_reports = driver.find_elements(By.CLASS_NAME, 'routerlink')
             page_reports = extract_reports(raw_reports)
-            new_reports += page_reports
 
             found = False
-            if first_report_link:
-                for i, report in enumerate(new_reports):
-                    if report["link"] == first_report_link:
-                        reports = new_reports[:i] + reports
-                        found = True
-                        break
-            else:
-                reports = new_reports
+            for i, rep in enumerate(page_reports):
+                link = rep.get('link')
+                if first_report_link and link == first_report_link:
+                    reports = page_reports[:i] + reports
+                    found = True
+                    break
 
             if found:
                 print("Found first known report, stopping.")
                 break
 
+            new_reports.extend(page_reports)
+            
             page += 1
             print("Page:", page)
 
             try:
-                next_page_button = driver.find_element(
-                    By.XPATH, "//button[@data-testid='hacktivity-pagination--pagination-next-page']"
-                )
+                next_page_button = driver.find_element(By.CSS_SELECTOR, "button[data-testid='hacktivity-pagination--pagination-next-page']")
                 driver.execute_script("arguments[0].click();", next_page_button)
                 time.sleep(page_loading_timeout)
                 driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
             except Exception:
-                print("No more pages.")
+                print("No next page button found; stopping.")
                 break
 
     except Exception as e:
@@ -127,15 +125,12 @@ def fetch(commandline_args):
     finally:
         driver.quit()
 
-    if reports:
-        with open(commandline_args.output_data_file, 'w', newline='', encoding='utf-8') as file:
-            keys = reports[0].keys()
-            writer = csv.DictWriter(file, fieldnames=keys)
-            writer.writeheader()
-            writer.writerows(reports)
-    
-    print(f"Saved {len(reports)} reports to {commandline_args.output_data_file}")
-
+    all_reports = new_reports + reports
+    with open(commandline_args.output_data_file, 'w', newline='', encoding='utf-8') as file:
+        keys = all_reports[0].keys()
+        writer = csv.DictWriter(file, fieldnames=keys)
+        writer.writeheader()
+        writer.writerows(all_reports)
 
 if __name__ == '__main__':
     parser = create_argument_parser()

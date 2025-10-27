@@ -68,8 +68,6 @@ def fill(commandline_args):
             print('error at report ' + str(i + 1), err)
             continue
 
-        print(new_reports[i])
-
     with open(commandline_args.output_data_file, 'w', newline='', encoding='utf-8') as file:
         reports = new_reports + fetched_reports
         keys = reports[0].keys()
@@ -78,7 +76,10 @@ def fill(commandline_args):
         writer.writerows(reports)
 
 
-if __name__ == '__main__':
+def main():
     parser = create_argument_parser()
     args = parser.parse_args()
     fill(args)
+
+if __name__ == '__main__':
+    main()
