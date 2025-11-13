@@ -13,6 +13,7 @@ import time
 import csv
 import argparse
 from datetime import datetime
+from selenium import webdriver
 from selenium.webdriver import Chrome, ChromeOptions
 from selenium.webdriver.common.by import By
 
@@ -69,7 +70,8 @@ def fetch(commandline_args):
     options.add_argument('--no-sandbox')
     options.add_argument('--headless=new')
     options.add_argument("--js-flags=--max-old-space-size=4096")
-    driver = Chrome(options=options)
+    # driver = Chrome(options=options)
+    driver = webdriver.Safari()
 
     reports = []
     with open(commandline_args.input_data_file, 'r', newline='', encoding='utf-8') as file:
