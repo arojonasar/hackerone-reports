@@ -1,3 +1,7 @@
 selenium
 requests
 argparse
+pandas
+numpy
+matplotlib
+seaborn
